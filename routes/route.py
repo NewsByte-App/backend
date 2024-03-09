@@ -10,7 +10,10 @@ from models.user import User
 from schema.schemas import list_serial_news, list_serial_users, individual_serial_users
 from bson import ObjectId
 from gnews import GNews
-from transformers import pipeline
+from transformers import pipeline, BartTokenizer
+
+
+from utils.news_fetcher import fetch_news
 
 summarizer = pipeline("summarization", model="facebook/bart-large-cnn")
 
@@ -43,8 +46,19 @@ async def get_user(email_id: str):
 @router.post("/create-user")
 async def create_user(user: User):
     existingUser = user_collection.find_one({'email': user.email})
-    if existingUser:
+    if existingUser and set(user.loginType).issubset(set(existingUser["loginType"])):
         return JSONResponse(status_code=400, content={"message": "User already exists"})
+    elif existingUser and not set(user.loginType).issubset(set(existingUser["loginType"])):
+        loginTypes = list(set(existingUser["loginType"] + user.loginType))
+        existingUser["loginType"] = loginTypes
+        updated_user = user_collection.update(
+            {"_id": existingUser["_id"]}, existingUser)
+        if updated_user:
+            serialized_user = json.dumps(
+                dict(user), indent=4, sort_keys=True, default=str)
+            return JSONResponse(content=json.loads(serialized_user), status_code=200)
+
+        return JSONResponse(status_code=400, content={"message": "Error Updating User"})
     else:
         # Serialize datetime objects using a custom function
         serialized_user = json.dumps(
@@ -60,29 +74,52 @@ async def create_user(user: User):
 
 
 # @router.on_event('startup')
-# @repeat_every(seconds=20)
+# @repeat_every(seconds=43200)
 # async def curate_news():
 #     try:
-#         res = google_news.get_news("US")
+#         res = fetch_news()
 #         for data in res:
 #             existing_news_item = news_collection.find_one(
 #                 {"title": data["title"]})
-#             if existing_news_item is None:
+#             if existing_news_item is None and data['url'] is not None:
 #                 content = google_news.get_full_article(data['url'])
-#                 if content is not None:
+#                 if content is not None and data['author'] is not None:
 #                     news_item = News(
 #                         title=data["title"],
-#                         description=data["description"],
-#                         published_date=datetime.strptime(
-#                             data["published date"], '%a, %d %b %Y %H:%M:%S GMT'
-#                         ),
+#                         description=data["description"] if data.get(
+#                             "description") else "",
+#                         published_date=datetime.fromisoformat(
+#                             data['publishedAt'].rstrip('Z')),
 #                         url=data["url"],
-#                         summary=summarizer(content.text, max_length=60,
-#                                            min_length=30, do_sample=False)[0]['summary_text'],
+#                         category=data['category'],
+#                         summary="",
 #                         content=content.text,
-#                         image_url=content.images[0],
-#                         summarized=False
+#                         image_url=list(content.images)[0],
+#                         summarized=False,
+#                         author=data["description"] if data.get(
+#                             "description") else "",
 #                     )
 #                     news_collection.insert_one(dict(news_item))
 #     except Exception as e:
 #         print(e)
+
+
+@router.on_event('startup')
+# Consider adjusting the frequency based on your needs
+@repeat_every(seconds=50)
+async def summarize():
+    try:
+        # Fetch news articles that haven't been summarized yet
+        news = news_collection.find({'summarized': False})
+
+        for data in news:
+            summary = summarizer(
+                data['content'].strip(), max_length=120, truncation=True)
+            data['summary'] = summary[0]['summary_text']
+            data['summarized'] = True
+            print(data)
+            updated_news = news_collection.update({'_id': data['_id']}, data)
+            print(updated_news)
+            print("Done")
+    except Exception as e:
+        print(e)
