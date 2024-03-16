@@ -23,13 +23,15 @@ def fetch_news_for_category(category):
 
         if news_data.get('articles'):
             for article in news_data['articles']:
+                print(article)
                 news_item = {
                     'title': article.get('title'),
                     'url': article.get('url'),
                     'author': article.get('author'),
                     'description': article.get('description'),
                     'publishedAt': article.get('publishedAt'),
-                    'category': category
+                    'category': category,
+                    'image_url': article.get('urlToImage')
                 }
                 news_list.append(news_item)
     except requests.RequestException as e:
