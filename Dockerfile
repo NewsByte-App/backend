@@ -10,9 +10,6 @@ ADD . /app
 # Install any needed packages specified in requirements.txt
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Install FastAPI and Uvicorn
-RUN pip install fastapi uvicorn
-
 # Make port 80 available to the world outside this container
 EXPOSE 80
 

@@ -1,6 +1,5 @@
 from datetime import datetime
 import json
-from fastapi_utilities import repeat_every
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import JSONResponse
 from config.database import news_collection, user_collection, user_behavior_collection
